@@ -1,17 +1,16 @@
 from __future__ import annotations
-from typing import Callable
 
-from math import ceil
+from collections import namedtuple
 from copy import deepcopy
 from functools import partial
-from collections import namedtuple
-
-import tqdm
+from math import ceil
+from typing import Callable
 
 import torch
-from torch import nn, stack, cat
 import torch.nn.functional as F
-from torch.nn import Module, ModuleList, Linear
+import tqdm
+from torch import cat, nn, stack
+from torch.nn import Linear, Module, ModuleList
 
 # flex attention
 # https://pytorch.org/blog/flexattention/
@@ -19,7 +18,7 @@ from torch.nn import Module, ModuleList, Linear
 flex_attention = None
 
 try:
-    from torch.nn.attention.flex_attention import flex_attention, create_block_mask
+    from torch.nn.attention.flex_attention import create_block_mask, flex_attention
     if torch.cuda.is_available():
         flex_attention = torch.compile(flex_attention)
 except ImportError:
@@ -46,27 +45,21 @@ def create_mac_block_mask(seq_len, window_size, persist_mem_len, sliding = False
 
 # einstein notation related
 
-from einops import repeat, rearrange, pack, unpack, einsum
-from einops.layers.torch import Rearrange
-
 # b - batch
 # n - sequence
 # h - heads
 # d - feature dimension
-
 # absolute and relative positions
-
 from axial_positional_embedding import ContinuousAxialPositionalEmbedding
+from einops import einsum, pack, rearrange, repeat, unpack
+from einops.layers.torch import Rearrange
+from hyper_connections import mc_get_init_and_expand_reduce_stream_functions
 from rotary_embedding_torch import RotaryEmbedding
 
 # hyper connections / attend from x-transformers, which handles different queries and key lengths better
-
 from x_transformers.attend import Attend
 
-from hyper_connections import mc_get_init_and_expand_reduce_stream_functions
-
 # proposed neural memory
-
 from titans_pytorch.neural_memory import NeuralMemory
 
 # constants
@@ -668,7 +661,7 @@ class MemoryAsContextTransformer(Module):
 
         # sample
 
-        with tqdm.tqdm(total = sample_num_times, disable = not show_progress) as pbar:
+        with tqdm.tqdm(total = sample_num_times, disable = not show_progress, desc="Sampling output tokens") as pbar:
 
             while out.shape[-1] < seq_len:
 

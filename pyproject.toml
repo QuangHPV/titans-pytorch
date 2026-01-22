@@ -6,7 +6,7 @@ authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" }
 ]
 readme = "README.md"
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 license = { file = "LICENSE" }
 keywords = [
     'artificial intelligence',
@@ -31,11 +31,13 @@ dependencies = [
     "einx>=0.3.0",
     "hyper-connections>=0.3.11",
     "Ninja",
+    "rich>=14.2.0",
     "rotary-embedding-torch",
+    "safetensors>=0.7.0",
     "tensordict",
     "torch>=2.8",
     "tqdm",
-    "x-transformers"
+    "x-transformers",
 ]
 
 [project.urls]
