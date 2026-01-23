@@ -1,14 +1,71 @@
-# /// script
-# dependencies = [
-#     "accelerate",
-#     "adam-atan2-pytorch>=0.1.18",
-#     "setuptools",
-#     "titans-pytorch",
-#     "tqdm",
-#     "wandb"
-# ]
-# ///
+"""
 
+Demonstrates the use of multiple Progress instances in a single Live display.    
+
+"""
+
+from time import sleep
+import random
+import torch.multiprocessing as mp
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.table import Table
+
+def job(rank: int, total: int, update_queue: mp.Queue):
+    for i in range(total):
+        sleep(random.uniform(0.0001, 5))
+        if i % 4 == rank:
+            update_queue.put({
+                "type": "log",
+                "rank": rank,
+                "message": f"Logging from {rank} at {i}"
+            })
+        update_queue.put({
+            "type": "advance",
+            "rank": rank
+        })
+
+ctx = mp.get_context("spawn")
+update_queue = ctx.Queue()
+job_progress = Progress(
+    "{task.description}",
+    SpinnerColumn(),
+    BarColumn(),
+    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+)
+for i in range(4):
+    job_progress.add_task(f"Job {i}", total=10)
+total = sum(task.total for task in job_progress.tasks)
+overall_progress = Progress()
+overall_task = overall_progress.add_task("All Jobs", total=int(total))
+
+progress_table = Table.grid()
+progress_table.add_row(
+    Panel.fit(
+        overall_progress, title="Overall Progress", border_style="green", padding=(2, 2)
+    ),
+    Panel.fit(job_progress, title="[b]Jobs", border_style="red", padding=(1, 2)),
+)
+
+
+if __name__ == "__main__":
+    with Live(progress_table, refresh_per_second=10) as live:
+        ctx = mp.spawn(job, (10, update_queue), nprocs=4, join=False)
+        while not overall_progress.finished:
+            sleep(0.1)
+            if not update_queue.empty():
+                update_obj = update_queue.get()
+                if update_obj["type"] == "advance":
+                    job_progress.advance(update_obj["rank"])
+                elif update_obj["type"] == "log":
+                    live.console.log(f"Message from {update_obj['rank']}: {update_obj['message']}")
+
+            completed = sum(task.completed for task in job_progress.tasks)
+            overall_progress.update(overall_task, completed=completed)
+
+        ctx.join()
+"""
 import gzip
 import os
 import random
@@ -225,11 +282,13 @@ def train(rank: int, world_size: int, update_queue: mp.Queue):
         # each outer batch takes GRADIENT_ACCUMULATE_EVERY steps (inner batch) using the train_iter
         # then each step (next(train_iter)) draw BATCH_SIZE samples from TextSamplerDataset
         # crucially, only do NUM_BATCHES // world_size number of batches
+        train_loss = 0.0
         for _ in range(GRADIENT_ACCUMULATE_EVERY):
             loss = model(next(train_iter), return_loss=True)
             loss.backward()
+            train_loss = loss.item()
 
-        print(f"training loss: {loss.item():.4f}") # make into pbar stats
+        print(f"training loss: {train_loss:.4f}") # make into pbar stats
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optim.step()
         optim.zero_grad()
@@ -264,7 +323,7 @@ def train(rank: int, world_size: int, update_queue: mp.Queue):
                 output_str = decode_tokens(sample[0])
                 print(output_str)
         
-        update_queue.put((rank, 1))
+        update_queue.put((rank, 1, ))
 
     destroy_process_group()
 
@@ -272,6 +331,8 @@ def train(rank: int, world_size: int, update_queue: mp.Queue):
 def main():
     world_size = torch.cuda.device_count()
     update_queue = mp.Queue()
+    log_queue = mp.Queue()
+
     with Progress() as progress:
         for i in range(world_size):
             progress.add_task(f"Replica {i}", total = NUM_BATCHES // world_size)
@@ -288,3 +349,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+"""
